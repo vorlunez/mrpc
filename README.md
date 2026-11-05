@@ -110,7 +110,7 @@ make build/epoll_server build/client
 ./build/client 127.0.0.1 8080
 ```
 
-`client` 默认连接 `127.0.0.1:8080`。输入一行并回车发送，显示服务端原样回复，
+`client` 默认连接 `127.0.0.1:8080`。输入一行并回车发送，用 `[recv]` 日志显示服务端原样回复，
 同一个连接可以连续通信；在空行提示处按 Ctrl+D 结束输入并关闭写方向，
 收到服务端关闭通知后退出。也支持管道输入：
 
@@ -141,6 +141,46 @@ HTTP 演示使用该库生成 JSON 响应，默认 TCP 模式保持 echo 行为�
 ## mlog
 
 在项目根目录运行 `make test`。测试程序和静态库生成在 `build/`，测试日志生成在 `tests/`。
+
+使用 glog 风格的流式接口，不需要初始化：
+
+```cpp
+#include "Logger.h"
+
+LOG(INFO) << "123";
+LOG(WARNING) << "retry count=" << 2;
+LOG(ERROR) << "request failed";
+```
+
+默认写入进程全局 ConsoleAppender，所有级别都同步输出到 stderr 并立即刷新。
+每条日志带级别、时间、线程号和源码文件/行号；语句结束时提交整条记录，
+多个线程使用同一 console 锁，避免同一条记录被其他日志穿插。
+`LOG` 本身不创建 EventBase 后台线程，支持 INFO、WARNING、ERROR，不包含 glog 的 FATAL、CHECK 等扩展。
+这是流式 API 兼容，不依赖第三方 glog。
+
+全局输出可切换，传入 nullptr 恢复 console：
+
+```cpp
+mlog::Logger::setGlobalAppender(mlog::Logger::getConsoleAppender());
+// 也可切到原有文件 appender：
+mlog::Logger::setGlobalAppender(
+    mlog::Logger::getInstance().getFileAppender("tests/example.log"));
+LOG(INFO) << "write to file";
+mlog::Logger::setGlobalAppender(nullptr);
+```
+
+全局 appender 的读取和切换由锁保护；已创建的日志记录持有原 appender，
+切换期间仍会把该条记录完整提交到原目标。LogMessage 析构不会抛异常，
+输出目标抛异常时向 stderr 写入最小故障提示，并恢复 errno。
+LOG 不适合在信号处理函数中调用；当前退出信号处理函数只设置标志。
+
+服务端、客户端和 C++ 测试的直接终端输出统一使用 LOG。
+必要的 throw/catch 继续负责错误传播和资源清理，最终由入口或 HTTP 回调边界用 LOG(ERROR) 记录，
+不会将初始化失败变成仅打印日志后继续运行。HTTP 非法请求及 TCP 连接错误使用 WARNING。
+客户端接收内容也输出为带前缀的 stderr 日志，stdout 不再是原始 echo 数据输出。
+需要重定向 console 日志时使用 `2>server.log`。
+
+原有文件 appender 接口仍然可用：
 
 ```cpp
 #include "Logger.h"

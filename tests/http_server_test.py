@@ -15,7 +15,7 @@ with socket.socket() as reservation:
     port = reservation.getsockname()[1]
 log = tempfile.TemporaryFile()
 server = subprocess.Popen([str(root / 'build/epoll_server'), str(port), '--http'],
-                          stdout=log, stderr=subprocess.PIPE)
+                          stdout=log, stderr=log)
 
 
 def connect():
@@ -161,8 +161,7 @@ finally:
     if server.poll() is None:
         server.kill()
     server.wait()
-    errors = server.stderr.read()
-    server.stderr.close()
+    if server.returncode != 0:
+        size = os.fstat(log.fileno()).st_size
+        print(os.pread(log.fileno(), 4096, max(0, size - 4096)).decode(errors='replace'))
     log.close()
-    if errors:
-        print(errors.decode(), end='')

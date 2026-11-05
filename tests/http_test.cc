@@ -1,8 +1,8 @@
+#include "Logger.h"
 #include "HttpRequest.h"
 #include "HttpResponse.h"
 #include "Router.h"
 #include <cassert>
-#include <iostream>
 #include <stdexcept>
 
 using mrpc::HttpRequest;
@@ -100,5 +100,5 @@ int main() {
     try { router.add("POST", "/custom", [](const HttpRequest&) { return mrpc::HttpResponse{}; }); }
     catch (const std::invalid_argument&) { duplicate = true; }
     assert(duplicate);
-    std::cout << "PASS: incremental HTTP framing, chunked, invalid requests, limits, response serialization\n";
+    LOG(INFO) << "PASS: incremental HTTP framing, chunked, invalid requests, limits, response serialization\n";
 }

@@ -7,7 +7,7 @@ LDLIBS += -pthread
 
 MLOG_SOURCES := $(wildcard src/mlog/*.cc)
 MLOG_OBJECTS := $(patsubst src/mlog/%.cc,build/mlog/%.o,$(MLOG_SOURCES))
-TEST_NAMES := mlog_test event_base_test
+TEST_NAMES := mlog_test event_base_test log_stream_test
 TEST_OBJECTS := $(addprefix build/tests/,$(addsuffix .o,$(TEST_NAMES)))
 LIBRARY := build/libmlog.a
 TESTS := $(addprefix build/,$(TEST_NAMES))
@@ -18,21 +18,21 @@ CLIENT_OBJECT := build/client.o
 .PHONY: all test test-server test-http clean
 all: $(LIBRARY) $(TESTS) build/http_test build/epoll_server build/client
 
-build/http_test: build/tests/http_test.o build/server/HttpRequest.o build/server/HttpResponse.o build/server/Router.o
+build/http_test: build/tests/http_test.o build/server/HttpRequest.o build/server/HttpResponse.o build/server/Router.o $(LIBRARY)
 	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 test-http: build/http_test build/epoll_server
 	./build/http_test
 	python3 tests/http_server_test.py
 
-build/client: $(CLIENT_OBJECT)
+build/client: $(CLIENT_OBJECT) $(LIBRARY)
 	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 $(CLIENT_OBJECT): src/client.cc
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-build/epoll_server: $(SERVER_OBJECTS)
+build/epoll_server: $(SERVER_OBJECTS) $(LIBRARY)
 	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 build/server/%.o: src/%.cc
@@ -59,6 +59,7 @@ build/tests/%.o: tests/%.cc
 test: $(TESTS) build/http_test
 	./build/mlog_test
 	./build/event_base_test
+	./build/log_stream_test
 	./build/http_test
 
 clean:

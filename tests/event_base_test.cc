@@ -3,7 +3,6 @@
 #include "Logger.h"
 
 #include <fstream>
-#include <iostream>
 #include <iterator>
 #include <set>
 #include <stdexcept>
@@ -160,9 +159,9 @@ int main() {
         eventBaseDiesFirst();
         loggerShutdown();
         concurrentStopAndAppend();
-        std::cout << "PASS: periodic/notification flush, lifetime and concurrent shutdown\n";
+        LOG(INFO) << "PASS: periodic/notification flush, lifetime and concurrent shutdown\n";
     } catch (const std::exception& error) {
-        std::cerr << "FAIL: " << error.what() << '\n';
+        LOG(ERROR) << "FAIL: " << error.what() << '\n';
         return 1;
     }
 }

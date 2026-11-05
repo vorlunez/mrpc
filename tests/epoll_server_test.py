@@ -27,7 +27,7 @@ binary = Path(__file__).resolve().parents[1] / "build" / "epoll_server"
 # Receive diagnostics can exceed pipe capacity during the large-payload test.
 server_output = tempfile.TemporaryFile()
 process = subprocess.Popen([str(binary), str(port)], stdout=server_output,
-                           stderr=subprocess.PIPE, text=True)
+                           stderr=server_output)
 
 
 def connect():
@@ -90,8 +90,7 @@ finally:
     if process.poll() is None:
         process.kill()
     process.wait()
-    error_output = process.stderr.read()
+    if process.returncode != 0:
+        size = os.fstat(server_output.fileno()).st_size
+        print(os.pread(server_output.fileno(), 4096, max(0, size - 4096)).decode(errors="replace"))
     server_output.close()
-    process.stderr.close()
-    if error_output:
-        print(error_output, end="")

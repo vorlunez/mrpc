@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <fstream>
-#include <iostream>
 #include <set>
 #include <thread>
 
@@ -10,7 +9,7 @@ int main() {
     const char* path = "tests/mlog_test.log";
     // 每次运行重新生成测试日志，Appender 本身仍使用追加模式。
     if (std::ofstream(path, std::ios::trunc).fail()) {
-        std::cerr << "Cannot create " << path << '\n';
+        LOG(ERROR) << "Cannot create " << path << '\n';
         return 1;
     }
 
@@ -55,14 +54,14 @@ int main() {
     while (std::getline(input, line)) {
         const auto start = line.find("] ");
         if (start == std::string::npos || expected.erase(line.substr(start + 2)) != 1) {
-            std::cerr << "Invalid or duplicate log line: " << line << '\n';
+            LOG(ERROR) << "Invalid or duplicate log line: " << line << '\n';
             return 1;
         }
         ++lines;
     }
     if (input.bad() || lines != count * 2 || !expected.empty()) {
-        std::cerr << "Incomplete log: " << lines << " lines\n";
+        LOG(ERROR) << "Incomplete log: " << lines << " lines\n";
         return 1;
     }
-    std::cout << "PASS: two threads wrote " << lines << " complete log lines to " << path << '\n';
+    LOG(INFO) << "PASS: two threads wrote " << lines << " complete log lines to " << path << '\n';
 }

@@ -66,13 +66,18 @@ void FileAppender::flush(bool /*force*/) {
 }
 
 ConsoleAppender& ConsoleAppender::getInstance() {
-    static ConsoleAppender app;
-    return app;
+    return *sharedInstance();
+}
+
+std::shared_ptr<ConsoleAppender> ConsoleAppender::sharedInstance() {
+    static auto appender = std::make_shared<ConsoleAppender>();
+    return appender;
 }
 
 void ConsoleAppender::append(std::string& msg, LogLevel level) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    std::cout << Formatter::format(msg, level);
+    // glog-style console diagnostics use stderr; stdout remains available for data.
+    std::cerr << Formatter::format(msg, level) << std::flush;
 }
 
 void ConsoleAppender::append(const char* msg, LogLevel level) {

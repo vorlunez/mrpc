@@ -10,6 +10,7 @@
 namespace mlog {
 struct FlushSignal;
 class EventBase;
+class Logger;
 class Appender {
 public:
     virtual ~Appender() = default;
@@ -50,6 +51,8 @@ public:
     void append(const char* msg, LogLevel level) override;
 
 private:
+    friend class Logger;
+    static std::shared_ptr<ConsoleAppender> sharedInstance();
     std::mutex m_mutex;
 };
 } // namespace mlog

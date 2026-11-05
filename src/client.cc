@@ -1,3 +1,4 @@
+#include "Logger.h"
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -46,7 +47,7 @@ void receiveEcho(int fd, std::size_t expected) {
     while (expected != 0) {
         ssize_t count = ::recv(fd, buffer, std::min(expected, sizeof(buffer)), 0);
         if (count > 0) {
-            std::cout.write(buffer, count);
+            LOG(INFO) << "[recv] " << std::string(buffer, static_cast<std::size_t>(count));
             expected -= static_cast<std::size_t>(count);
         } else if (count == 0) {
             throw std::runtime_error("server closed before the complete echo arrived");
@@ -54,13 +55,12 @@ void receiveEcho(int fd, std::size_t expected) {
             fail("recv");
         }
     }
-    std::cout.flush();
 }
 } // namespace
 
 int main(int argc, char** argv) {
     if (argc > 3) {
-        std::cerr << "Usage: " << argv[0] << " [IPv4 address] [port]\n";
+        LOG(ERROR) << "Usage: " << argv[0] << " [IPv4 address] [port]";
         return 1;
     }
     long port = 8080;
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
         errno = 0;
         port = std::strtol(argv[2], &end, 10);
         if (errno || end == argv[2] || *end || port < 1 || port > 65535) {
-            std::cerr << "Port must be an integer from 1 to 65535\n";
+            LOG(ERROR) << "Port must be an integer from 1 to 65535";
             return 1;
         }
     }
@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
     address.sin_port = htons(static_cast<unsigned short>(port));
     const char* host = argc >= 2 ? argv[1] : "127.0.0.1";
     if (::inet_pton(AF_INET, host, &address.sin_addr) != 1) {
-        std::cerr << "Invalid IPv4 address: " << host << '\n';
+        LOG(ERROR) << "Invalid IPv4 address: " << host;
         return 1;
     }
 
@@ -88,11 +88,11 @@ int main(int argc, char** argv) {
             fail("connect");
         const bool interactive = ::isatty(STDIN_FILENO);
         if (interactive)
-            std::cerr << "Connected to " << host << ':' << port
-                      << ". Enter a line to send; Ctrl+D to exit.\n";
+            LOG(INFO) << "Connected to " << host << ':' << port
+                      << ". Enter a line to send; Ctrl+D to exit.";
         std::string line;
         while (true) {
-            if (interactive) std::cerr << "> ";
+            if (interactive) LOG(INFO) << "Enter a message:";
             if (!std::getline(std::cin, line)) break;
             // Preserve a final input line without a newline when used in a pipe.
             if (!std::cin.eof()) line.push_back('\n');
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
         if (count < 0) fail("recv after shutdown");
         if (count > 0) throw std::runtime_error("server sent unexpected extra data");
     } catch (const std::exception& error) {
-        std::cerr << error.what() << '\n';
+        LOG(ERROR) << error.what();
         return 1;
     }
 }

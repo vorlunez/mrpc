@@ -1,4 +1,5 @@
 #include "TcpServer.h"
+#include "Logger.h"
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -7,7 +8,6 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
-#include <iostream>
 #include <stdexcept>
 
 namespace mrpc {
@@ -36,7 +36,7 @@ void TcpServer::run(unsigned short port, const volatile std::sig_atomic_t& stopp
         fail("bind");
     if (::listen(listener_, SOMAXCONN) < 0) fail("listen");
     epoll_.add(listener_, EPOLLIN);
-    std::cout << "TCP server listening on 127.0.0.1:" << port << std::endl;
+    LOG(INFO) << "TCP server listening on 127.0.0.1:" << port;
 
     epoll_event events[64];
     while (!stopping) {
@@ -100,6 +100,10 @@ void TcpServer::handle(int fd, unsigned int flags) {
     auto it = connections_.find(fd);
     if (it == connections_.end()) return;
     if (flags & EPOLLERR) {
+        int error = 0;
+        socklen_t length = sizeof(error);
+        if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &length) < 0) error = errno;
+        LOG(WARNING) << "socket fd=" << fd << ": " << std::strerror(error);
         closeClient(fd);
         return;
     }
@@ -114,14 +118,13 @@ void TcpServer::handle(int fd, unsigned int flags) {
             ssize_t size = ::recv(fd, buffer, std::min(room, sizeof(buffer)), 0);
             if (size > 0) {
                 client.input.append(buffer, static_cast<std::size_t>(size));
-                std::cout << "[recv fd=" << fd << ", bytes=" << size << "] ";
-                // recv returns a byte count, not a null-terminated C string.
-                std::cout.write(buffer, size);
-                if (buffer[size - 1] != '\n') std::cout << '\n';
-                std::cout.flush();
+                // recv returns bytes, not a null-terminated C string.
+                LOG(INFO) << "[recv fd=" << fd << ", bytes=" << size << "] "
+                          << std::string(buffer, static_cast<std::size_t>(size));
             }
             else if (size == 0) client.eof = true;
             else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+                LOG(WARNING) << "recv fd=" << fd << ": " << std::strerror(errno);
                 closeClient(fd);
                 return;
             }
@@ -134,6 +137,7 @@ void TcpServer::handle(int fd, unsigned int flags) {
                               client.output.size() - client.sent, MSG_NOSIGNAL);
         if (size > 0) client.sent += static_cast<std::size_t>(size);
         else if (size < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+            LOG(WARNING) << "send fd=" << fd << ": " << std::strerror(errno);
             closeClient(fd);
             return;
         }

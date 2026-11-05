@@ -1,6 +1,8 @@
 #include "HttpServer.h"
 #include "HttpRequest.h"
 #include "HttpResponse.h"
+#include "Logger.h"
+#include <exception>
 #include <nlohmann/json.hpp>
 
 namespace mrpc {
@@ -23,6 +25,7 @@ TcpServer::Reply HttpServer::handle(std::string& input, bool eof) {
     response.headers["Content-Type"] = "application/json; charset=utf-8";
     if (result != HttpRequest::ParseResult::Complete) {
         response.status = result == HttpRequest::ParseResult::Error ? request.errorStatus : 400;
+        LOG(WARNING) << "HTTP request rejected: status=" << response.status;
         response.body = nlohmann::json({{"error", "invalid or unsupported HTTP request"},
                                         {"status", response.status}}).dump();
         response.close = true;
@@ -31,7 +34,15 @@ TcpServer::Reply HttpServer::handle(std::string& input, bool eof) {
         input.erase(0, consumed);
         try {
             response = router_.dispatch(request);
+        } catch (const std::exception& error) {
+            LOG(ERROR) << "HTTP callback failed: " << error.what();
+            response = HttpResponse{};
+            response.status = 500;
+            response.headers["Content-Type"] = "application/json; charset=utf-8";
+            response.body = "{\"error\":\"internal server error\"}";
+            response.close = true;
         } catch (...) {
+            LOG(ERROR) << "HTTP callback failed: unknown exception";
             response = HttpResponse{};
             response.status = 500;
             response.headers["Content-Type"] = "application/json; charset=utf-8";
