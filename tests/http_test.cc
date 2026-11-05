@@ -1,5 +1,6 @@
 #include "HttpRequest.h"
 #include "HttpResponse.h"
+#include "Router.h"
 #include <cassert>
 #include <iostream>
 #include <stdexcept>
@@ -77,5 +78,27 @@ int main() {
     bool rejected = false;
     try { response.serialize(); } catch (const std::invalid_argument&) { rejected = true; }
     assert(rejected);
+    mrpc::Router router;
+    int calls = 0;
+    router.add("POST", "/custom", [&](const HttpRequest& incoming) {
+        ++calls;
+        mrpc::HttpResponse reply;
+        reply.status = 201;
+        reply.body = incoming.body;
+        return reply;
+    });
+    request.method = "POST";
+    request.target = "/custom?debug=true";
+    request.body = "callback body";
+    auto routed = router.dispatch(request);
+    assert(routed.status == 201 && routed.body == request.body && calls == 1);
+    request.method = "GET";
+    assert(router.dispatch(request).status == 405 && calls == 1);
+    request.target = "/custom/extra";
+    assert(router.dispatch(request).status == 404 && calls == 1);
+    bool duplicate = false;
+    try { router.add("POST", "/custom", [](const HttpRequest&) { return mrpc::HttpResponse{}; }); }
+    catch (const std::invalid_argument&) { duplicate = true; }
+    assert(duplicate);
     std::cout << "PASS: incremental HTTP framing, chunked, invalid requests, limits, response serialization\n";
 }

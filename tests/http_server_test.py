@@ -63,23 +63,40 @@ try:
 
     # Use the standard HTTP client as an independent protocol consumer.
     conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
-    conn.request('GET', '/hello?q=1')
+    conn.request('GET', '/ping?q=1')
     response = conn.getresponse()
     assert response.status == 200
-    assert json.loads(response.read()) == {'method': 'GET', 'target': '/hello?q=1', 'body': ''}
+    assert response.read() == b'pong\n'
     payload = '你好，mrpc'.encode()
-    conn.request('POST', '/echo', body=payload, headers={'Content-Type': 'text/plain'})
+    conn.request('POST', '/print', body=payload, headers={'Content-Type': 'text/plain'})
     response = conn.getresponse()
-    assert json.loads(response.read())['body'] == payload.decode()
-    conn.request('HEAD', '/hello')
+    assert json.loads(response.read()) == {'printed': True, 'body': payload.decode()}
+    conn.request('HEAD', '/ping')
     response = conn.getresponse()
     assert response.status == 200 and int(response.getheader('Content-Length')) > 0
     assert response.read() == b''
     conn.close()
 
+    # Route failures still leave a persistent connection usable.
+    conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+    for method, path, expected, allowed in [
+        ('GET', '/missing', 404, None),
+        ('POST', '/ping', 405, 'GET, HEAD'),
+        ('GET', '/print', 405, 'POST'),
+        ('GET', '/ping/extra', 404, None),
+        ('GET', '/ping', 200, None),
+    ]:
+        conn.request(method, path)
+        response = conn.getresponse()
+        assert response.status == expected
+        assert response.getheader('Allow') == allowed
+        response.read()
+    conn.close()
+    assert b'[print] ' + payload in os.pread(log.fileno(), 65536, 0)
+
     # Split both headers and body. No response is allowed before the complete body.
     with connect() as sock:
-        sock.sendall(b'POST /split HTTP/1.1\r\nHo')
+        sock.sendall(b'POST /print HTTP/1.1\r\nHo')
         time.sleep(0.02)
         sock.sendall(b'st: localhost\r\nContent-Length: 5\r\n\r\nhe')
         sock.settimeout(0.1)
@@ -94,23 +111,23 @@ try:
 
     # Chunked body with trailer, followed immediately by another request.
     with connect() as sock:
-        sock.sendall(b'POST /chunks HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n'
+        sock.sendall(b'POST /print HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n'
                      b'2\r\nhi\r\n3\r\n123\r\n0\r\nX-End: yes\r\n\r\n'
-                     b'GET /next HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
+                     b'GET /ping HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
         reader = Reader(sock)
         assert json.loads(reader.response()[2])['body'] == 'hi123'
-        assert json.loads(reader.response()[2])['target'] == '/next'
+        assert reader.response()[2] == b'pong\n'
         assert sock.recv(1) == b''
 
     # Large replies plus pipelining must make progress with a slow reader.
     with connect() as sock:
         body = b'x' * 200000
-        sock.sendall(b'POST /large HTTP/1.1\r\nHost: localhost\r\nContent-Length: 200000\r\n\r\n' + body +
-                     b'GET /after HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
+        sock.sendall(b'POST /print HTTP/1.1\r\nHost: localhost\r\nContent-Length: 200000\r\n\r\n' + body +
+                     b'GET /ping HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
         time.sleep(0.05)
         reader = Reader(sock)
         assert json.loads(reader.response()[2])['body'].encode() == body
-        assert json.loads(reader.response()[2])['target'] == '/after'
+        assert reader.response()[2] == b'pong\n'
         assert sock.recv(1) == b''
 
     exchange(b'GET / HTTP/1.1\r\n\r\n', 400)
@@ -128,10 +145,10 @@ try:
     def independent_client(index):
         connection = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
         try:
-            connection.request('GET', '/' + str(index))
+            connection.request('GET', '/ping?client=' + str(index))
             response = connection.getresponse()
             assert response.status == 200
-            assert json.loads(response.read())['target'] == '/' + str(index)
+            assert response.read() == b'pong\n'
         finally:
             connection.close()
 
@@ -139,7 +156,7 @@ try:
         list(pool.map(independent_client, range(24)))
     server.terminate()
     assert server.wait(timeout=3) == 0
-    print('PASS: HTTP GET/POST/HEAD, keep-alive, segmentation, chunked, pipelining, large response, errors, concurrency')
+    print('PASS: ping/print callbacks, server output, 404/405, HEAD, keep-alive, segmentation, chunked, pipelining, large response, errors, concurrency')
 finally:
     if server.poll() is None:
         server.kill()

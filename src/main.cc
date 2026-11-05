@@ -8,6 +8,7 @@
 #include <exception>
 #include <iostream>
 #include <string>
+#include <nlohmann/json.hpp>
 
 namespace {
 volatile std::sig_atomic_t stopping = 0;
@@ -40,6 +41,23 @@ int main(int argc, char** argv) {
     try {
         if (argc == 3) {
             mrpc::HttpServer server;
+            server.addRoute("GET", "/ping", [](const mrpc::HttpRequest&) {
+                mrpc::HttpResponse response;
+                response.headers["Content-Type"] = "text/plain; charset=utf-8";
+                response.body = "pong\n";
+                return response;
+            });
+            server.addRoute("POST", "/print", [](const mrpc::HttpRequest& request) {
+                std::cout << "[print] ";
+                std::cout.write(request.body.data(), request.body.size());
+                if (request.body.empty() || request.body.back() != '\n') std::cout << '\n';
+                std::cout.flush();
+                mrpc::HttpResponse response;
+                response.headers["Content-Type"] = "application/json; charset=utf-8";
+                response.body = nlohmann::json({{"printed", true}, {"body", request.body}})
+                    .dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+                return response;
+            });
             server.run(static_cast<unsigned short>(port), stopping);
         } else {
             mrpc::TcpServer server;

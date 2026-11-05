@@ -40,21 +40,47 @@ make build/epoll_server
 在另一个终端发送请求：
 
 ```sh
-curl -i 'http://127.0.0.1:8080/hello?q=1'
-curl -i http://127.0.0.1:8080/echo -H 'Content-Type: application/json' -d '{"message":"你好"}'
-curl -I http://127.0.0.1:8080/hello
+curl -i 'http://127.0.0.1:8080/ping'
+curl -i http://127.0.0.1:8080/print -H 'Content-Type: text/plain' --data-binary '你好，mrpc'
+curl -I http://127.0.0.1:8080/ping
 ```
 
-目前是演示处理器，GET、POST、HEAD、OPTIONS 可访问任意路径，不做路由分发；
-返回解析出的 `method`、`target`、`body`，例如：
+入口文件注册两个业务回调：
+
+| 方法 | 路径 | 行为 |
+| --- | --- | --- |
+| GET（也支持 HEAD） | `/ping` | 返回 `pong` 和换行，HEAD 仅返回响应头 |
+| POST | `/print` | 在服务端输出 `[print] 正文`，返回 JSON 确认并回传正文 |
+
+`/print` 的响应示例：
 
 ```json
-{"body":"","method":"GET","target":"/hello?q=1"}
+{"body":"你好，mrpc","printed":true}
 ```
+
+路由按方法和路径精确匹配，忽略查询字符串：`/ping?q=1` 匹配 `/ping`，
+`/ping/extra` 不匹配。未知路径返回 404，已知路径的方法不匹配返回 405 和 Allow 响应头。
+HEAD 在未单独注册时复用 GET 回调，序列化时省略正文；GET 回调应避免副作用。
+注册接口为 `HttpServer::addRoute(method, path, callback)`，回调接收 `const HttpRequest&`，返回 `HttpResponse`。
+例如在 `run()` 前注册：
+
+```cpp
+mrpc::HttpServer server;
+server.addRoute("GET", "/ping", [](const mrpc::HttpRequest&) {
+    mrpc::HttpResponse response;
+    response.headers["Content-Type"] = "text/plain; charset=utf-8";
+    response.body = "pong\n";
+    return response;
+});
+```
+
+同一方法和路径不允许重复注册，启动后不修改路由表。
+回调在事件循环线程同步执行，应保持简短；回调抛出异常时返回 500 并关闭该连接。
 
 - `HttpRequest.h/.cc`：从缓冲区解析一个请求，返回 `Incomplete`、`Complete` 或 `Error`；成功时通过 `consumed` 返回本条请求的字节数，保留后续请求的边界。字段名统一转小写，支持大小写不敏感的查询。
 - `HttpResponse.h/.cc`：生成状态行、响应头和响应体，自动计算字节长度、生成 Date 与 Connection；HEAD 省略正文，204/304 不发送正文及 Content-Length，205 发送零长度响应。拒绝包含非法控制字符的响应头。
-- `HttpServer.h/.cc`：维护 HTTP 与 TCP 的边界，通过 TCP 的 Handler 回调解析请求并生成回复。TcpServer 与 Epoll 不依赖 HTTP 类型。
+- `HttpServer.h/.cc`：维护 HTTP 与 TCP 的边界，通过 TCP 的 Handler 回调解析请求，交由 Router 分发并编码回复。TcpServer 与 Epoll 不依赖 HTTP 类型。
+- `Router.h/.cc`：保存方法、路径与业务回调的映射，负责匹配和 404/405；具体 `/ping`、`/print` 行为注册在 `main.cc`。
 
 支持 CRLF 格式的 HTTP/1.1 请求、Host 检查、Content-Length、chunked 解码（含扩展及 trailer 语法检查）、默认长连接、Connection: close 和按顺序处理流水线请求。
 请求头上限 16 KiB、解码后正文上限 1 MiB；chunked 额外限制编码开销，trailer 单独限制为 16 KiB，校验后丢弃。
@@ -62,8 +88,8 @@ curl -I http://127.0.0.1:8080/hello
 格式错误或未完成请求遇到 EOF 返回 400；过大正文返回 413、过大头返回 431，然后关闭连接。
 
 这是供学习的 HTTP/1.1 子集：只接受 origin-form 路径和 `OPTIONS *`，不提供代理、CONNECT、Upgrade、TLS 或 HTTP/1.0。
-其他方法返回 405，其他传输编码返回 501，Expect 请求返回 417，版本不支持返回 505。
-body 保留原始字节；演示处理器把 body 放入 JSON 字符串，不自动解析其中的 JSON，无效 UTF-8 在演示响应中替换。
+方法是否支持由路由表决定；其他传输编码返回 501，Expect 请求返回 417，版本不支持返回 505。
+body 保留原始字节；`/print` 把 body 放入 JSON 字符串，不自动解析其中的 JSON，无效 UTF-8 在响应中替换。
 当前解析器会重解析已积累的缓冲，尚未实现连接超时或大正文的流式处理。
 
 ```sh
