@@ -1,5 +1,10 @@
 #include "include/Logger.h"
+#include "EventBase.h"
 namespace mlog {
+
+Logger::Logger(std::chrono::milliseconds interval) : m_event_base(new EventBase(interval)) {}
+
+Logger::~Logger() = default;
 
 Logger& Logger::getInstance() {
     static Logger log;
@@ -13,6 +18,7 @@ std::shared_ptr<Appender> Logger::getFileAppender(std::string& name) {
         return it->second;
     }
     auto file_appender_sp = std::make_shared<FileAppender>(name);
+    m_event_base->addAppender(file_appender_sp);
     m_file_appender_map[name] = file_appender_sp;
 
     return file_appender_sp;

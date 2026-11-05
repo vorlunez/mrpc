@@ -1,5 +1,6 @@
 #include "Logger.h"
 
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -27,9 +28,20 @@ int main() {
     first.join();
     second.join();
 
-    auto appender = std::dynamic_pointer_cast<mlog::FileAppender>(
-        mlog::Logger::getInstance().getFileAppender(path));
-    appender->flush(true);
+    // 不手动 flush，等待 Logger 内部的 EventBase 定时刷新。
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (std::chrono::steady_clock::now() < deadline) {
+        std::ifstream pending(path);
+        int lines = 0;
+        std::string line;
+        while (std::getline(pending, line)) {
+            ++lines;
+        }
+        if (lines == count * 2) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
 
     std::ifstream input(path);
     std::set<std::string> expected;
