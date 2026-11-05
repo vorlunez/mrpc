@@ -52,6 +52,22 @@ printf 'hello\n你好，mrpc\n' | ./build/client
 大行分块交替发送、接收；按发送字节数收齐 echo 回复，这依赖当前 echo 行为，
 后续接入 HTTP/RPC 时需要改成对应的消息解析。目前只支持 IPv4 数字地址，未设置网络超时。
 
+## JSON 库
+
+项目内置 `nlohmann/json v3.12.0`，采用纯头文件方式，无需系统安装或额外链接。
+Makefile 已配置 include 路径，在项目源码中可以直接使用：
+
+```cpp
+#include <nlohmann/json.hpp>
+
+nlohmann::json request = {{"method", "echo"}, {"message", "hello"}};
+std::string payload = request.dump();
+auto decoded = nlohmann::json::parse(payload);
+```
+
+第三方文件位于 `third_party/nlohmann_json/`，附带 MIT 许可证、来源和 SHA-256。
+当前仅接入依赖，TCP 示例保持 echo 行为。
+
 ## mlog
 
 在项目根目录运行 `make test`。测试程序和静态库生成在 `build/`，测试日志生成在 `tests/`。

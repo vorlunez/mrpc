@@ -1,6 +1,6 @@
 CXX ?= g++
 AR ?= ar
-CPPFLAGS += -Isrc -Isrc/mlog/include
+CPPFLAGS += -Isrc -Isrc/mlog/include -Ithird_party/nlohmann_json/include
 CXXFLAGS ?= -std=c++11 -O2 -Wall -Wextra
 CXXFLAGS += -pthread -MMD -MP
 LDLIBS += -pthread
