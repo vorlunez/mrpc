@@ -1,4 +1,5 @@
 #include "TcpServer.h"
+#include "HttpServer.h"
 
 #include <cerrno>
 #include <csignal>
@@ -6,6 +7,7 @@
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <string>
 
 namespace {
 volatile std::sig_atomic_t stopping = 0;
@@ -14,11 +16,11 @@ void stop(int) { stopping = 1; }
 
 int main(int argc, char** argv) {
     long port = 8080;
-    if (argc > 2) {
-        std::cerr << "Usage: " << argv[0] << " [port]\n";
+    if (argc > 3 || (argc == 3 && std::string(argv[2]) != "--http")) {
+        std::cerr << "Usage: " << argv[0] << " [port] [--http]\n";
         return 1;
     }
-    if (argc == 2) {
+    if (argc >= 2) {
         char* end = nullptr;
         errno = 0;
         port = std::strtol(argv[1], &end, 10);
@@ -36,8 +38,13 @@ int main(int argc, char** argv) {
         return 1;
     }
     try {
-        mrpc::TcpServer server;
-        server.run(static_cast<unsigned short>(port), stopping);
+        if (argc == 3) {
+            mrpc::HttpServer server;
+            server.run(static_cast<unsigned short>(port), stopping);
+        } else {
+            mrpc::TcpServer server;
+            server.run(static_cast<unsigned short>(port), stopping);
+        }
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

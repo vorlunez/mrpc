@@ -30,6 +30,50 @@ TCP 是字节流，单次 recv 不代表一条完整请求。
 - `src/TcpServer.h` / `src/TcpServer.cc`：管理监听和客户端 socket、连接缓冲和 TCP 收发，通过 `Epoll` 操作事件。
 - `src/main.cc`：处理命令行参数和退出信号，启动服务。
 
+## HTTP/1.1
+
+```sh
+make build/epoll_server
+./build/epoll_server 8080 --http
+```
+
+在另一个终端发送请求：
+
+```sh
+curl -i 'http://127.0.0.1:8080/hello?q=1'
+curl -i http://127.0.0.1:8080/echo -H 'Content-Type: application/json' -d '{"message":"你好"}'
+curl -I http://127.0.0.1:8080/hello
+```
+
+目前是演示处理器，GET、POST、HEAD、OPTIONS 可访问任意路径，不做路由分发；
+返回解析出的 `method`、`target`、`body`，例如：
+
+```json
+{"body":"","method":"GET","target":"/hello?q=1"}
+```
+
+- `HttpRequest.h/.cc`：从缓冲区解析一个请求，返回 `Incomplete`、`Complete` 或 `Error`；成功时通过 `consumed` 返回本条请求的字节数，保留后续请求的边界。字段名统一转小写，支持大小写不敏感的查询。
+- `HttpResponse.h/.cc`：生成状态行、响应头和响应体，自动计算字节长度、生成 Date 与 Connection；HEAD 省略正文，204/304 不发送正文及 Content-Length，205 发送零长度响应。拒绝包含非法控制字符的响应头。
+- `HttpServer.h/.cc`：维护 HTTP 与 TCP 的边界，通过 TCP 的 Handler 回调解析请求并生成回复。TcpServer 与 Epoll 不依赖 HTTP 类型。
+
+支持 CRLF 格式的 HTTP/1.1 请求、Host 检查、Content-Length、chunked 解码（含扩展及 trailer 语法检查）、默认长连接、Connection: close 和按顺序处理流水线请求。
+请求头上限 16 KiB、解码后正文上限 1 MiB；chunked 额外限制编码开销，trailer 单独限制为 16 KiB，校验后丢弃。
+拒绝重复 Host/Content-Length/Transfer-Encoding 和 Content-Length 与 Transfer-Encoding 同时出现的请求。
+格式错误或未完成请求遇到 EOF 返回 400；过大正文返回 413、过大头返回 431，然后关闭连接。
+
+这是供学习的 HTTP/1.1 子集：只接受 origin-form 路径和 `OPTIONS *`，不提供代理、CONNECT、Upgrade、TLS 或 HTTP/1.0。
+其他方法返回 405，其他传输编码返回 501，Expect 请求返回 417，版本不支持返回 505。
+body 保留原始字节；演示处理器把 body 放入 JSON 字符串，不自动解析其中的 JSON，无效 UTF-8 在演示响应中替换。
+当前解析器会重解析已积累的缓冲，尚未实现连接超时或大正文的流式处理。
+
+```sh
+make test-http   # 编解码单测 + 实际 HTTP 网络测试
+make test-server # 原有 TCP echo 网络回归
+make test        # mlog 测试 + HTTP 编解码单测
+```
+
+HTTP 模式使用 curl 或 HTTP 客户端测试；`build/client` 按原始字节数等待 echo，用于默认的 TCP echo 模式。
+
 ## 单客户端通信
 
 ```sh
@@ -66,7 +110,7 @@ auto decoded = nlohmann::json::parse(payload);
 ```
 
 第三方文件位于 `third_party/nlohmann_json/`，附带 MIT 许可证、来源和 SHA-256。
-当前仅接入依赖，TCP 示例保持 echo 行为。
+HTTP 演示使用该库生成 JSON 响应，默认 TCP 模式保持 echo 行为。
 
 ## mlog
 

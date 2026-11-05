@@ -11,11 +11,19 @@ TEST_NAMES := mlog_test event_base_test
 TEST_OBJECTS := $(addprefix build/tests/,$(addsuffix .o,$(TEST_NAMES)))
 LIBRARY := build/libmlog.a
 TESTS := $(addprefix build/,$(TEST_NAMES))
-SERVER_OBJECTS := build/server/main.o build/server/Epoll.o build/server/TcpServer.o
+HTTP_OBJECTS := build/server/HttpRequest.o build/server/HttpResponse.o build/server/HttpServer.o
+SERVER_OBJECTS := build/server/main.o build/server/Epoll.o build/server/TcpServer.o $(HTTP_OBJECTS)
 CLIENT_OBJECT := build/client.o
 
-.PHONY: all test test-server clean
-all: $(LIBRARY) $(TESTS) build/epoll_server build/client
+.PHONY: all test test-server test-http clean
+all: $(LIBRARY) $(TESTS) build/http_test build/epoll_server build/client
+
+build/http_test: build/tests/http_test.o build/server/HttpRequest.o build/server/HttpResponse.o
+	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+test-http: build/http_test build/epoll_server
+	./build/http_test
+	python3 tests/http_server_test.py
 
 build/client: $(CLIENT_OBJECT)
 	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
@@ -48,13 +56,14 @@ build/tests/%.o: tests/%.cc
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-test: $(TESTS)
+test: $(TESTS) build/http_test
 	./build/mlog_test
 	./build/event_base_test
+	./build/http_test
 
 clean:
 	rm -rf build
 	rm -f tests/mlog_test.log
 	rm -f tests/event_base_*.log
 
--include $(MLOG_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d) $(SERVER_OBJECTS:.o=.d) $(CLIENT_OBJECT:.o=.d)
+-include $(MLOG_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d) $(SERVER_OBJECTS:.o=.d) $(CLIENT_OBJECT:.o=.d) build/tests/http_test.d
