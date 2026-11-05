@@ -1,0 +1,9 @@
+# Build outputs and generated test logs
+/build/
+/tests/*.log
+
+# Local agent instructions and editor temporary files
+/AGENTS.md
+*.swp
+*.swo
+*~
