@@ -3,6 +3,33 @@ just for study
 by using AI to build a mini rpc arch quickly
 I will refer to grpc,brpc,thirft
 
+## epoll TCP server（Linux）
+
+```sh
+make build/epoll_server
+./build/epoll_server 8080
+# 另一个终端连接，输入内容即可收到原样回复
+nc 127.0.0.1 8080
+```
+
+默认端口为 8080，仅监听本机。使用 Ctrl+C 或 SIGTERM 退出。
+`src/TcpServer.cc` 是单线程 TCP echo 示例：非阻塞 socket + epoll LT，
+一个事件循环处理多个连接，默认采用 TCP echo 模式。
+TCP 是字节流，单次 recv 不代表一条完整请求。
+服务端终端会打印每次收到的字节块，例如 `[recv fd=5, bytes=6] hello`；
+这里展示的是一次 recv 的结果，长消息可能分成多次打印。
+
+每个连接有待发送回复时暂停读，回复发送完后恢复读，避免慢客户端积压更多请求。
+处理部分写入、EAGAIN、对端断开；客户端关闭写方向后，服务端发送完已接收数据再关闭连接。
+连接数量暂无上限；耗尽文件描述符等监听错误会让程序报错退出。
+运行 `make test-server` 验证网络收发，需要 Python 3。
+
+职责划分：
+
+- `src/Epoll.h` / `src/Epoll.cc`：封装 epoll 实例的创建、销毁、添加、修改、移除和等待事件；不管理 socket 或处理 TCP 数据。
+- `src/TcpServer.h` / `src/TcpServer.cc`：管理监听和客户端 socket、连接缓冲和 TCP 收发，通过 `Epoll` 操作事件。
+- `src/main.cc`：处理命令行参数和退出信号，启动服务。
+
 ## mlog
 
 在项目根目录运行 `make test`。测试程序和静态库生成在 `build/`，测试日志生成在 `tests/`。
