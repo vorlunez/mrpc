@@ -30,6 +30,28 @@ TCP 是字节流，单次 recv 不代表一条完整请求。
 - `src/TcpServer.h` / `src/TcpServer.cc`：管理监听和客户端 socket、连接缓冲和 TCP 收发，通过 `Epoll` 操作事件。
 - `src/main.cc`：处理命令行参数和退出信号，启动服务。
 
+## 单客户端通信
+
+```sh
+make build/epoll_server build/client
+# 终端一
+./build/epoll_server 8080
+# 终端二
+./build/client 127.0.0.1 8080
+```
+
+`client` 默认连接 `127.0.0.1:8080`。输入一行并回车发送，显示服务端原样回复，
+同一个连接可以连续通信；在空行提示处按 Ctrl+D 结束输入并关闭写方向，
+收到服务端关闭通知后退出。也支持管道输入：
+
+```sh
+printf 'hello\n你好，mrpc\n' | ./build/client
+```
+
+`src/client.cc` 使用阻塞 socket，处理部分发送、部分接收和 EINTR。
+大行分块交替发送、接收；按发送字节数收齐 echo 回复，这依赖当前 echo 行为，
+后续接入 HTTP/RPC 时需要改成对应的消息解析。目前只支持 IPv4 数字地址，未设置网络超时。
+
 ## mlog
 
 在项目根目录运行 `make test`。测试程序和静态库生成在 `build/`，测试日志生成在 `tests/`。

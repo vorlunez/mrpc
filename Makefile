@@ -12,9 +12,17 @@ TEST_OBJECTS := $(addprefix build/tests/,$(addsuffix .o,$(TEST_NAMES)))
 LIBRARY := build/libmlog.a
 TESTS := $(addprefix build/,$(TEST_NAMES))
 SERVER_OBJECTS := build/server/main.o build/server/Epoll.o build/server/TcpServer.o
+CLIENT_OBJECT := build/client.o
 
 .PHONY: all test test-server clean
-all: $(LIBRARY) $(TESTS) build/epoll_server
+all: $(LIBRARY) $(TESTS) build/epoll_server build/client
+
+build/client: $(CLIENT_OBJECT)
+	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+$(CLIENT_OBJECT): src/client.cc
+	@mkdir -p $(@D)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 build/epoll_server: $(SERVER_OBJECTS)
 	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
@@ -49,4 +57,4 @@ clean:
 	rm -f tests/mlog_test.log
 	rm -f tests/event_base_*.log
 
--include $(MLOG_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d) $(SERVER_OBJECTS:.o=.d)
+-include $(MLOG_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d) $(SERVER_OBJECTS:.o=.d) $(CLIENT_OBJECT:.o=.d)
